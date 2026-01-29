@@ -1,8 +1,8 @@
 "use strict";
 
 const DRIVE_SETTINGS_KEY = "gm_drive_settings_v1";
-const DRIVE_DEFAULT_FOLDER = "16m9_eLbdgUjOYVakNh0uAReY-qDRHSC4";
-const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly";
+const DRIVE_DEFAULT_FOLDER = "1365s3Gd4_0rMc-T113gkl-mx5CJ1WgwV";
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.readonly https://www.googleapis.com/auth/drive.file";
 const DRIVE_API_BASE = "https://www.googleapis.com/drive/v3/files";
 
 let driveTokenClient = null;
@@ -207,6 +207,29 @@ function bindDriveInputAutosave(){
   folderInput?.addEventListener("blur", save);
 }
 
+async function uploadFileToDrive({ folderId, name, mimeType, bytes, token }){
+  const metadata = { name };
+  if(folderId) metadata.parents = [folderId];
+  const boundary = `gm_${Math.random().toString(36).slice(2)}`;
+  const fileBlob = bytes instanceof Blob ? bytes : new Blob([bytes], { type: mimeType || "application/octet-stream" });
+  const body = new Blob([
+    `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}\r\n`,
+    `--${boundary}\r\nContent-Type: ${mimeType || "application/octet-stream"}\r\n\r\n`,
+    fileBlob,
+    `\r\n--${boundary}--`
+  ], { type: `multipart/related; boundary=${boundary}` });
+  const res = await fetch(`${DRIVE_API_BASE}?uploadType=multipart&supportsAllDrives=true`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body
+  });
+  if(!res.ok){
+    const text = await res.text();
+    throw new Error(`Drive upload ${res.status}: ${text}`);
+  }
+  return res.json();
+}
+
 async function scanDriveAndLink(){
   const settings = readDriveInputs();
   if(!settings.clientId) return alert("Informe o Client ID do Google Cloud.");
@@ -373,3 +396,10 @@ document.getElementById("btnScanDriveLaudos")?.addEventListener("click", scanDri
 ensureDriveInputs();
 bindDriveInputAutosave();
 setDriveStatus("Aguardando configuração.");
+
+window.gmDrive = {
+  ensureDriveToken,
+  readDriveInputs,
+  saveDriveSettings,
+  uploadFileToDrive
+};

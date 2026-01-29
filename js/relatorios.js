@@ -46,6 +46,20 @@ function setRelatoriosRootInfo(text){
   if(el) el.innerText = text;
 }
 
+function setRelatoriosDriveInfo(text){
+  const el = document.getElementById("relDriveInfo");
+  if(el) el.innerText = text;
+}
+
+function driveEnabled(){
+  return !!document.getElementById("relUseDrive")?.checked;
+}
+
+function readDriveSettingsSafe(){
+  if(!window.gmDrive || !window.gmDrive.readDriveInputs) return { clientId: "", folderId: "" };
+  return window.gmDrive.readDriveInputs();
+}
+
 async function initRelatoriosRoot(){
   try{
     const handle = await loadRelatoriosRoot();
@@ -570,6 +584,40 @@ async function gerarRelatoriosPdf(){
       : `MULTI-${filters.tipos.length}`)
     : "TODOS";
 
+  if(driveEnabled()){
+    const settings = readDriveSettingsSafe();
+    if(!settings.clientId) return alert("Informe o Client ID do Google Cloud.");
+    if(!settings.folderId) return alert("Informe o ID da pasta no Drive.");
+    if(!window.gmDrive || !window.gmDrive.ensureDriveToken || !window.gmDrive.uploadFileToDrive){
+      return alert("Integração com Drive não carregada.");
+    }
+    showProgress("Enviando ao Google Drive...", "Gerando PDFs e enviando para a pasta.");
+    try{
+      const token = await window.gmDrive.ensureDriveToken(true);
+      if(!token) throw new Error("Token do Drive indisponível.");
+      for(const [setorNome, list] of bySetor){
+        const table = buildRelatorioTable(setorNome, list, filters);
+        const bytes = buildPdfBytes(table);
+        const fileName = `relatorio_${sanitizeFsName(setorNome)}_${tipoTag}_${dateKey}.pdf`;
+        await window.gmDrive.uploadFileToDrive({
+          folderId: settings.folderId,
+          name: fileName,
+          mimeType: "application/pdf",
+          bytes,
+          token
+        });
+      }
+      setRelatoriosDriveInfo("Envio concluído para o Google Drive.");
+      alert("Relatórios enviados ao Google Drive.");
+    }catch(err){
+      console.error(err);
+      alert("Falha ao enviar para o Google Drive.");
+    }finally{
+      setTimeout(hideProgress, 0);
+    }
+    return;
+  }
+
   const root = await ensureRelatoriosRoot();
   if(!root && !window.showDirectoryPicker){
     for(const [setorNome, list] of bySetor){
@@ -605,6 +653,28 @@ async function gerarRelatoriosPdf(){
 
 document.getElementById("btnSelectRelatoriosRoot")?.addEventListener("click", selectRelatoriosRoot);
 document.getElementById("btnGerarRelatorio")?.addEventListener("click", gerarRelatoriosPdf);
+document.getElementById("relUseDrive")?.addEventListener("change", ()=>{
+  if(driveEnabled()){
+    const settings = readDriveSettingsSafe();
+    if(settings.folderId){
+      setRelatoriosDriveInfo(`Drive ativo. Pasta: ${settings.folderId}.`);
+    }else{
+      setRelatoriosDriveInfo("Drive ativo. Informe o ID da pasta na aba OS.");
+    }
+  }else{
+    setRelatoriosDriveInfo("Drive desativado. Use exportação local.");
+  }
+});
 
 initRelatoriosRoot();
 window.renderRelatoriosFilters = renderRelatoriosFilters;
+if(driveEnabled()){
+  const settings = readDriveSettingsSafe();
+  if(settings.folderId){
+    setRelatoriosDriveInfo(`Drive ativo. Pasta: ${settings.folderId}.`);
+  }else{
+    setRelatoriosDriveInfo("Drive ativo. Informe o ID da pasta na aba OS.");
+  }
+}else{
+  setRelatoriosDriveInfo("Drive desativado. Use exportação local.");
+}
