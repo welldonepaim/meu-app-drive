@@ -1,0 +1,587 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Gestão de Manutenções (Offline)</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#1a1f2e;
+      --panel:#242d3d;
+      --ink:#e4e8f0;
+      --muted:#a0aac0;
+      --brand:#14b8a6;
+      --brand-2:#f59e0b;
+      --accent:#0f766e;
+      --line:#3a4455;
+      --shadow:0 10px 30px rgba(0,0,0,.3);
+      --radius:16px;
+    }
+    *{box-sizing:border-box;margin:0;padding:0}
+    body{
+      font-family:"Sora","Segoe UI",system-ui,Arial,sans-serif;
+      background:
+        radial-gradient(1200px 500px at 10% -10%, #2a3449 0%, rgba(42,52,73,0) 70%),
+        radial-gradient(900px 400px at 110% 0%, #1f2a3a 0%, rgba(31,42,58,0) 70%),
+        var(--bg);
+      color:var(--ink);
+    }
+    header{
+      position:sticky;top:0;z-index:10;
+      background:linear-gradient(135deg,#0f766e,#14b8a6);
+      color:#fff;padding:16px 18px;
+      box-shadow:0 12px 30px rgba(0,0,0,.5);
+    }
+    header .row{max-width:1200px;margin:0 auto;display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+    header h1{font-size:1.1rem;font-weight:900;letter-spacing:.3px}
+    main{max-width:1200px;margin:18px auto;padding:0 14px}
+    .tabs{display:flex;gap:8px;flex-wrap:wrap;margin:14px 0}
+    .tab{
+      border:1px solid transparent;padding:10px 14px;border-radius:999px;
+      background:rgba(36,45,61,.6);cursor:pointer;font-weight:900;
+      box-shadow:0 4px 16px rgba(0,0,0,.2);
+      transition:transform .2s ease, box-shadow .2s ease, background .2s ease;
+      color:var(--ink);
+    }
+    .tab:hover{transform:translateY(-1px);box-shadow:0 8px 20px rgba(0,0,0,.3)}
+    .tab.active{background:var(--brand);color:#000}
+    .card{
+      background:var(--panel);border-radius:var(--radius);
+      padding:16px;border:1px solid var(--line);
+      box-shadow:var(--shadow);margin-bottom:14px;
+      animation:fadeUp .35s ease both;
+    }
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    @media(max-width:900px){.grid{grid-template-columns:1fr}}
+    label{font-weight:900;font-size:.9rem;display:block;margin:8px 0 6px}
+    input,select,textarea{
+      width:100%;padding:10px 12px;border:2px solid #3a4455;border-radius:12px;
+      font:inherit;background:#2a3449;color:var(--ink);
+    }
+    input:focus,select:focus,textarea:focus{
+      outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(20,184,166,.25)
+    }
+    .btn{
+      border:0;border-radius:12px;padding:10px 14px;font-weight:1000;cursor:pointer;
+      transition:transform .15s ease, box-shadow .2s ease, background .2s ease;
+    }
+    .btn:hover{transform:translateY(-1px);box-shadow:0 8px 18px rgba(0,0,0,.3)}
+    .btn.primary{background:var(--brand);color:#000}
+    .btn.danger{background:#b91c1c;color:#fff}
+    .btn.gray{background:var(--accent);color:#fff}
+    .btn.soft{background:#3a4455;color:var(--ink)}
+    .row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+    .muted{color:var(--muted);font-size:.9rem}
+    table{width:100%;border-collapse:collapse;font-size:.92rem}
+    th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
+    th{background:#2a3449}
+    .pill{display:inline-block;padding:4px 10px;border-radius:999px;font-size:.8rem;font-weight:1000}
+    .pill.ok{background:#dcfce7;color:#065f46}
+    .pill.warn{background:#fef3c7;color:#92400e}
+    .pill.bad{background:#fee2e2;color:#7f1d1d}
+    .pill.neutral{background:#e5e7eb;color:#111827}
+    .kpi{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+    @media(max-width:900px){.kpi{grid-template-columns:repeat(2,1fr)}}
+    .kpi .box{
+      padding:12px;border-radius:var(--radius);background:var(--panel);
+      border:1px solid var(--line);box-shadow:var(--shadow);
+    }
+    .kpi .n{font-size:1.5rem;font-weight:1100}
+    .kpi .t{font-size:.85rem;color:var(--muted);font-weight:1000}
+    .divider{height:1px;background:var(--line);margin:12px 0}
+    .small{font-size:.85rem}
+    .right{margin-left:auto}
+    .mono{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;}
+    .hint{background:#2a3449;border-radius:12px;padding:10px 12px;color:#c5d0e0;font-size:.9rem}
+    .stack{display:flex;flex-direction:column;gap:6px}
+    a{color:#14b8a6;text-decoration:none}
+    a:hover{text-decoration:underline}
+    /* Modal styling */
+    [id^="modal"] > div {
+      background:var(--panel)!important;color:var(--ink)!important;
+    }
+    [id^="modal"] .divider{background:var(--line)}
+    @keyframes fadeUp{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+    @media (prefers-reduced-motion: reduce){
+      .card,.tab,.btn{animation:none;transition:none}
+    }
+  </style>
+</head>
+
+<body>
+<header>
+  <div class="row">
+    <h1>Gestão de Manutenções (Offline)</h1>
+    <div class="row">
+      <button class="btn soft" id="btnExport">Exportar backup</button>
+      <label class="btn soft" style="cursor:pointer">
+        Importar backup <input id="fileImportBackup" type="file" accept=".json" hidden>
+      </label>
+      <button class="btn danger" id="btnReset">Reset (cuidado)</button>
+    </div>
+  </div>
+</header>
+
+<main>
+  <div class="kpi">
+    <div class="box"><div class="n" id="kpiEquip">0</div><div class="t">Equipamentos</div></div>
+    <div class="box"><div class="n" id="kpiManut">0</div><div class="t">OS (30d)</div></div>
+    <div class="box"><div class="n" id="kpiVencidas">0</div><div class="t">Vencidas</div></div>
+    <div class="box"><div class="n" id="kpiProximas">0</div><div class="t">Próximas (30d)</div></div>
+  </div>
+
+  <div class="tabs">
+    <button class="tab" data-tab="equip">Equipamentos</button>
+    <button class="tab" data-tab="tipos">Tipos</button>
+    <button class="tab" data-tab="setores">Setores</button>
+    <button class="tab" data-tab="manut">Planejamentos</button>
+    <button class="tab active" data-tab="os">OS (30 dias)</button>
+    <button class="tab" data-tab="relatorios">Relatórios</button>
+    <button class="tab" data-tab="import">Importar (CSV/XLS)</button>
+    <button class="tab" data-tab="logs">Logs</button>
+  </div>
+
+  <!-- EQUIPAMENTOS -->
+  <section id="tab-equip" class="card" style="display:none">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">Equipamentos</div>
+        <div class="muted">Cadastro estável. Manutenção fica em outra aba.</div>
+      </div>
+      <div class="right row">
+        <input id="searchEq" placeholder="Buscar: nome, tasy, patrimônio, setor..." style="min-width:280px">
+        <select id="filterEq" style="width:220px">
+          <option value="">Filtro (todos)</option>
+          <option value="ativo">Ativo</option>
+          <option value="descontinuado">Descontinuado</option>
+          <option value="nao_recebe">Não recebe preventiva</option>
+        </select>
+        <button class="btn soft" id="btnToggleEqList">Mostrar lista</button>
+        <button class="btn primary" id="btnNovoEq">Novo</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div id="eqList"></div>
+  </section>
+
+  <!-- TIPOS -->
+  <section id="tab-tipos" class="card" style="display:none">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">Tipos</div>
+        <div class="muted">Ex.: Bombas, Oxímetros, Monitores...</div>
+      </div>
+      <div class="right row">
+        <input id="newTipoNome" placeholder="Nome do tipo..." style="min-width:260px">
+        <button class="btn primary" id="btnAddTipo">Adicionar</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div id="tipoList"></div>
+  </section>
+
+  <!-- SETORES -->
+  <section id="tab-setores" class="card" style="display:none">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">Setores</div>
+        <div class="muted">Cadastre os setores para usar no cadastro de equipamentos.</div>
+      </div>
+      <div class="right row">
+        <input id="newSetorNome" placeholder="Nome do setor..." style="min-width:260px">
+        <button class="btn primary" id="btnAddSetor">Adicionar</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div id="setorList"></div>
+  </section>
+
+  <!-- PLANEJAMENTOS -->
+  <section id="tab-manut" class="card" style="display:none">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">Planejamentos</div>
+        <div class="muted">Defina periodicidade, próxima e ative/inative o planejamento.</div>
+      </div>
+      <div class="right row">
+        <input id="searchManut" placeholder="Buscar: equipamento, tasy, setor..." style="min-width:280px">
+        <select id="filterManut" style="width:220px">
+          <option value="ativos">Ativos</option>
+          <option value="inativos">Inativos</option>
+          <option value="todos">Todos</option>
+        </select>
+        <button class="btn primary" id="btnNovaManut">Novo planejamento</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div id="manutList"></div>
+  </section>
+
+  <!-- OS (30 DIAS) -->
+  <section id="tab-os" class="card">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">OS • Próximos 30 dias</div>
+        <div class="muted">Atenda as ordens para atualizar a próxima preventiva.</div>
+      </div>
+      <div class="right row">
+        <input id="searchOS" placeholder="Buscar: equipamento, tasy, setor..." style="min-width:280px">
+        <select id="filterOS" style="width:220px">
+          <option value="abertas">Abertas</option>
+          <option value="atendidas">Atendidas</option>
+          <option value="todas">Todas</option>
+        </select>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div class="card" style="margin-bottom:12px">
+      <div class="row">
+        <div class="stack">
+          <div style="font-weight:1100">Laudos • Google Drive</div>
+          <div class="muted small">Varre a pasta, pega o último laudo por TASY e atende as OS abertas.</div>
+        </div>
+        <div class="right row">
+          <button class="btn soft" id="btnDriveAuth">🔐 Conectar Google</button>
+          <button class="btn primary" id="btnScanDriveLaudos">🔎 Varrer e vincular</button>
+        </div>
+      </div>
+      <div class="divider"></div>
+      <div class="grid">
+        <div>
+          <label>Client ID (OAuth)</label>
+          <input id="driveClientId" placeholder="Seu Client ID do Google Cloud">
+        </div>
+        <div>
+          <label>ID da pasta no Drive</label>
+          <input id="driveFolderId" placeholder="ex: 16m9_eLbdgUjOYVakNh0uAReY-qDRHSC4">
+        </div>
+      </div>
+      <div id="driveStatus" class="muted small" style="margin-top:8px">Aguardando configuração.</div>
+    </div>
+    <div class="divider"></div>
+    <div id="osList"></div>
+  </section>
+
+  <!-- RELATÓRIOS -->
+  <section id="tab-relatorios" class="card" style="display:none">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">Relatórios PDF</div>
+        <div class="muted">Gera um PDF por setor, com filtros por tipo de equipamento.</div>
+      </div>
+      <div class="right row">
+        <button class="btn soft" id="btnSelectRelatoriosRoot">📁 Pasta de exportação</button>
+        <button class="btn primary" id="btnGerarRelatorio">🧾 Gerar PDF</button>
+      </div>
+    </div>
+    <div class="divider"></div>
+    <div id="relatoriosRootInfo" class="muted small">Nenhuma pasta selecionada.</div>
+    <div class="divider"></div>
+    <div class="grid">
+      <div>
+        <label>Setor</label>
+        <select id="relSetor"></select>
+      </div>
+      <div>
+        <label>Tipo</label>
+        <select id="relTipo" multiple size="6"></select>
+        <div class="muted small" style="margin-top:6px">Selecione um ou mais tipos. Se não selecionar nenhum, gera de todos.</div>
+      </div>
+    </div>
+    <div class="row" style="margin-top:10px">
+      <label class="row small muted">
+        <input id="relSomenteComTipo" type="checkbox">
+        Somente equipamentos com tipo definido
+      </label>
+    </div>
+    <div class="divider"></div>
+    <div class="stack">
+      <div style="font-weight:1100">Campos no PDF</div>
+      <div class="grid">
+        <label class="row small muted"><input id="relShowTasy" type="checkbox" checked> TASY</label>
+        <label class="row small muted"><input id="relShowPat" type="checkbox" checked> Patrimônio</label>
+        <label class="row small muted"><input id="relShowModelo" type="checkbox" checked> Modelo</label>
+      </div>
+      <div class="grid">
+        <label class="row small muted"><input id="relShowStatus" type="checkbox"> Status</label>
+        <label class="row small muted"><input id="relShowRecebe" type="checkbox"> Recebe preventiva</label>
+        <label class="row small muted"><input id="relShowPlanAtivo" type="checkbox"> Planejamento ativo</label>
+        <label class="row small muted"><input id="relShowPlanDatas" type="checkbox" checked> Datas (última/próxima)</label>
+      </div>
+      <div class="grid">
+        <label class="row small muted"><input id="relShowPlanPer" type="checkbox" checked> Periodicidade</label>
+        <label class="row small muted"><input id="relShowAtividade" type="checkbox" checked> Atividade</label>
+      </div>
+    </div>
+  </section>
+
+  <!-- IMPORTAÇÃO -->
+  <section id="tab-import" class="card" style="display:none">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">Importar CSV/XLS</div>
+        <div class="muted">Escolha o modo: Equipamentos ou Manutenções. Sempre com prévia.</div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div class="grid">
+      <div>
+        <label>Modo de importação</label>
+        <select id="importMode">
+          <option value="equip">Importar Equipamentos</option>
+          <option value="setores">Importar Setores</option>
+          <option value="manut">Importar Planejamentos</option>
+        </select>
+
+        <label style="margin-top:10px">Arquivo CSV/XLS</label>
+        <input type="file" id="fileCsv" accept=".csv,.txt,.xls,.xlsx">
+        <div class="muted small">Delimitador automático: TAB / “;” / “,” (para CSV)</div>
+
+        <label style="margin-top:10px">Regra de descontinuidade (somente Equipamentos)</label>
+        <select id="ruleDiscontinued">
+          <option value="none">Não marcar descontinuados</option>
+          <option value="mark_missing">Marcar como descontinuado quem NÃO aparecer no CSV</option>
+        </select>
+
+        <label style="margin-top:10px">Campos que o CSV pode atualizar</label>
+        <div class="row small">
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updNome" checked> Nome</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updSetor" checked> Setor</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updModelo" checked> Modelo</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updPatrimonio" checked> Patrimônio</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updTipo"> Tipo</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updStatus"> Situação</label>
+
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updDatas" checked> Datas (última/próxima)</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updPeriodicidade" checked> Periodicidade</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updAtividade" checked> Atividade</label>
+          <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="updLaudo" checked> Link/Laudo</label>
+        </div>
+
+        <div class="hint" style="margin-top:10px">
+          Equipamentos já cadastrados <b>não</b> mudam "Não recebe preventiva" por importação.
+        </div>
+
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" id="btnPreview">Gerar prévia</button>
+          <button class="btn gray" id="btnApply" disabled>Aplicar</button>
+          <button class="btn soft" id="btnAutoMap" type="button">🧠 Auto-mapear</button>
+        </div>
+      </div>
+
+      <div>
+        <label>Mapeamento de colunas (cabeçalho)</label>
+        <div class="muted small">Você pode digitar como vem no CSV. Datas viram <b>dd/mm/aaaa</b>.</div>
+
+        <div class="grid" style="margin-top:10px">
+          <div><label>TASY</label><input id="mapTasy" value="tasy"></div>
+          <div><label>Patrimônio</label><input id="mapPatrimonio" value="patrimonio"></div>
+          <div><label>Nome/Descrição</label><input id="mapNome" value="descricao"></div>
+          <div><label>Setor</label><input id="mapSetor" value="setor"></div>
+          <div><label>Modelo/Coluna 4</label><input id="mapModelo" value="coluna 4"></div>
+          <div><label>Tipo</label><input id="mapTipo" value="tipo"></div>
+
+          <div><label>Atividade</label><input id="mapAtividade" value="atividade"></div>
+          <div><label>Situação</label><input id="mapSituacao" value="situacao"></div>
+          <div><label>Data última</label><input id="mapUltima" value="data da ultima preventiva"></div>
+          <div><label>Data próxima</label><input id="mapProxima" value="data da proxima"></div>
+          <div><label>Periodicidade</label><input id="mapPeriodicidade" value="periodicidade"></div>
+          <div><label>Link/Laudo</label><input id="mapLaudo" value="coluna 10"></div>
+        </div>
+
+        <div class="muted small" style="margin-top:8px">
+          Planejamentos são ligados por <b>TASY</b>. Se não encontrar o equipamento, entra como “pendente de vínculo”.
+        </div>
+      </div>
+    </div>
+
+    <div class="divider"></div>
+
+    <div>
+      <div style="font-weight:1100;margin-bottom:8px">Prévia</div>
+      <div class="muted small" id="previewHint">Escolha um modo, selecione o CSV/XLS e clique em “Gerar prévia”.</div>
+      <div id="previewTable" style="margin-top:10px"></div>
+    </div>
+  </section>
+
+  <!-- LOGS -->
+  <section id="tab-logs" class="card" style="display:none">
+    <div class="row">
+      <div class="stack">
+        <div style="font-weight:1100;font-size:1.05rem">Logs</div>
+        <div class="muted">Tudo que acontecer fica registrado.</div>
+      </div>
+      <button class="btn soft right" id="btnClearLogs">Limpar logs</button>
+    </div>
+    <div class="divider"></div>
+    <div id="logList"></div>
+  </section>
+
+  <!-- MODAL EQUIPAMENTO -->
+  <div id="modalEq" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; padding:14px; z-index:1000">
+    <div style="background:#fff; width:100%; max-width:820px; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div class="row">
+        <div style="font-weight:1100" id="modalEqTitle">Novo equipamento</div>
+        <button class="btn soft right" id="btnCloseEq">×</button>
+      </div>
+      <div class="divider"></div>
+
+      <div class="grid">
+        <div><label>TASY</label><input id="eTasy" placeholder="ex: 12914"></div>
+        <div><label>Patrimônio</label><input id="ePat" placeholder="ex: 17287"></div>
+      </div>
+      <div class="grid">
+        <div><label>Nome/Descrição</label><input id="eNome" placeholder="ex: Bomba de Infusão"></div>
+        <div><label>Modelo/Marca</label><input id="eModelo" placeholder="ex: FRESENIUS"></div>
+      </div>
+      <div class="grid">
+        <div>
+          <label>Setor</label>
+          <select id="eSetor"></select>
+        </div>
+        <div>
+          <label>Tipo</label>
+          <select id="eTipo"></select>
+        </div>
+      </div>
+      <div class="grid">
+        <div>
+          <label>Status</label>
+          <select id="eStatus">
+            <option value="ativo">Ativo</option>
+            <option value="descontinuado">Descontinuado</option>
+          </select>
+        </div>
+        <div>
+          <label>Recebe Preventiva?</label>
+          <select id="eRecebe">
+            <option value="true">Sim</option>
+            <option value="false">Não</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="btnSaveEq">Salvar</button>
+        <button class="btn danger" id="btnDelEq" style="display:none">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL MANUTENÇÃO -->
+  <div id="modalManut" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; padding:14px; z-index:1000">
+    <div style="background:#fff; width:100%; max-width:880px; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div class="row">
+        <div style="font-weight:1100" id="modalManutTitle">Nova manutenção</div>
+        <button class="btn soft right" id="btnCloseManut">×</button>
+      </div>
+      <div class="divider"></div>
+
+      <div class="grid">
+        <div><label>Número</label><input id="mSeq" placeholder="auto" readonly></div>
+        <div>
+          <label>Equipamento (TASY)</label>
+          <input id="mTasy" placeholder="ex: 12914">
+          <div class="muted small">Vai ligar ao equipamento pelo TASY.</div>
+        </div>
+        <div>
+          <label>Atividade</label>
+          <input id="mAtiv" placeholder="ex: Preventiva anual">
+        </div>
+      </div>
+
+      <div class="grid">
+        <div><label>Última (dd/mm/aaaa)</label><input id="mUlt" placeholder="ex: 12/06/2025"></div>
+        <div><label>Periodicidade (dias)</label><input id="mPer" placeholder="ex: 730"></div>
+      </div>
+
+      <div class="grid">
+        <div><label>Próxima (auto)</label><input id="mProx" placeholder="auto" readonly></div>
+        <div>
+          <label>Planejamento ativo?</label>
+          <select id="mAtivo">
+            <option value="true">Sim</option>
+            <option value="false">Não</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <button class="btn primary" id="btnSaveManut">Salvar</button>
+        <button class="btn danger" id="btnDelManut" style="display:none">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL OS -->
+  <div id="modalOS" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; padding:14px; z-index:1000">
+    <div style="background:#fff; width:100%; max-width:880px; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div class="row">
+        <div style="font-weight:1100" id="modalOSTitle">OS</div>
+        <button class="btn soft right" id="btnCloseOS">×</button>
+      </div>
+      <div class="divider"></div>
+
+      <div class="grid">
+        <div><label>Número</label><input id="osSeq" readonly></div>
+        <div><label>Equipamento (TASY)</label><input id="osTasy" readonly></div>
+      </div>
+
+      <div class="grid">
+        <div><label>Atividade</label><input id="osAtiv" readonly></div>
+        <div><label>Prevista</label><input id="osPrevista" readonly></div>
+      </div>
+
+      <div class="divider"></div>
+      <div class="stack">
+        <div style="font-weight:1100">Atendimento</div>
+        <div class="row">
+          <button class="btn primary" id="btnAtenderOS">Atender OS</button>
+        </div>
+        <div id="osLaudoInfo" class="muted small" style="margin-top:6px">Nenhum laudo vinculado.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL HISTÓRICO EQUIPAMENTO -->
+  <div id="modalHistEquip" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,.55); align-items:center; justify-content:center; padding:14px; z-index:1000">
+    <div style="background:#fff; width:100%; max-width:980px; border-radius:16px; padding:14px; box-shadow:0 20px 60px rgba(0,0,0,.35)">
+      <div class="row">
+        <div>
+          <div style="font-weight:1100" id="histEquipTitle">Histórico do equipamento</div>
+          <div class="muted small" id="histEquipSubtitle"></div>
+        </div>
+        <button class="btn soft right" id="btnCloseHistEquip">×</button>
+      </div>
+      <div class="divider"></div>
+      <div class="row">
+        <label class="muted small">Filtro</label>
+        <select id="histEquipFilter" style="width:220px">
+          <option value="all">Tudo</option>
+          <option value="equip">Equipamento</option>
+          <option value="manut">Manutenções</option>
+          <option value="laudos">Laudos</option>
+        </select>
+      </div>
+      <div class="divider"></div>
+      <div id="histEquipList"></div>
+    </div>
+  </div>
+
+</main>
+
+<script src="https://accounts.google.com/gsi/client" async defer></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="./app.js"></script>
+<script src="./js/driveLaudos.js"></script>
+<script src="./js/tipos.js"></script>
+<script src="./js/setores.js"></script>
+<script src="./js/equipamentos.js"></script>
+<script src="./js/manutencoes.js"></script>
+<script src="./js/relatorios.js"></script>
+<script src="./js/main.js"></script>
+</body>
+</html>
