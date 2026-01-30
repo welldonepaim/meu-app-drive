@@ -1,0 +1,35 @@
+name: Gerar XLS dos laudos (Drive)
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 3 * * *"  # todo dia 03:00 UTC (00:00 em -03), ajuste se quiser
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run extractor
+        env:
+          GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
+          GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
+        run: |
+          python extract_drive_laudate.py
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v6
+        with:
+          name: resultado-xlsx
+          path: resultado.xlsx
