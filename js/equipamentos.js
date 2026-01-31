@@ -261,12 +261,31 @@ btnDelEq.addEventListener("click", ()=>{
 
 const elSearchEq = document.getElementById("searchEq");
 const elFilterEq = document.getElementById("filterEq");
+const elFilterEqTipo = document.getElementById("filterEqTipo");
 elSearchEq.addEventListener("input", renderEquipList);
 elFilterEq.addEventListener("change", renderEquipList);
+elFilterEqTipo.addEventListener("change", renderEquipList);
+
+function refreshTipoFilter(){
+  if(!elFilterEqTipo) return;
+  const current = norm(elFilterEqTipo.value);
+  elFilterEqTipo.innerHTML = `<option value="">Tipo (todos)</option><option value="__SEM__">Sem tipo</option>`;
+  const sorted = db.tipos.slice().sort((a,b)=>norm(a.nome).localeCompare(norm(b.nome)));
+  for(const t of sorted){
+    const opt = document.createElement("option");
+    opt.value = String(t.id);
+    opt.textContent = t.nome;
+    elFilterEqTipo.appendChild(opt);
+  }
+  if(current && Array.from(elFilterEqTipo.options).some(o=>o.value===current)){
+    elFilterEqTipo.value = current;
+  }
+}
 
 function renderEquipList(){
   const q = norm(elSearchEq.value).toLowerCase();
   const f = norm(elFilterEq.value);
+  const fTipo = norm(elFilterEqTipo?.value || "");
   const el = document.getElementById("eqList");
 
   if(!showEquipList){
@@ -280,6 +299,10 @@ function renderEquipList(){
     if(f==="ativo" && e.status!=="ativo") return false;
     if(f==="descontinuado" && e.status!=="descontinuado") return false;
     if(f==="nao_recebe" && e.recebePreventiva!==false) return false;
+    if(fTipo){
+      if(fTipo==="__SEM__" && e.tipoId) return false;
+      if(fTipo!=="__SEM__" && String(e.tipoId || "") !== fTipo) return false;
+    }
 
     const setor = sectorNameFromEquip(e);
     const hay = `${e.nome} ${e.tasy} ${e.patrimonio} ${setor} ${e.modelo} ${typeName(e.tipoId)}`.toLowerCase();

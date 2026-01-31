@@ -329,7 +329,9 @@ document.getElementById("btnPreview").addEventListener("click", async ()=>{
     ? buildPreviewEquip(parsed, mapping, allowed, ruleDisc)
     : (mode==="setores")
       ? buildPreviewSetores(parsed, mapping)
-      : buildPreviewManut(parsed, mapping, allowed);
+      : (mode==="datas")
+        ? buildPreviewDatas(parsed, mapping)
+        : buildPreviewManut(parsed, mapping, allowed);
 
   renderPreview(lastPreview);
   document.getElementById("btnApply").disabled = false;
@@ -456,10 +458,13 @@ function parseCsvSmart(text){
   const tab = (first.match(/\t/g)||[]).length;
   const semi = (first.match(/;/g)||[]).length;
   const comma = (first.match(/,/g)||[]).length;
+  const wsParts = first.trim().split(/\s+/);
 
   let delim = ",";
-  if(tab>=semi && tab>=comma) delim="\t";
-  else if(semi>comma) delim=";";
+  if(tab>=semi && tab>=comma && tab>0) delim="\t";
+  else if(semi>comma && semi>0) delim=";";
+  else if(comma>0) delim=",";
+  else if(wsParts.length>1) delim="WS";
 
   const rawRows = lines.map(line=>splitLine(line, delim));
   const header = rawRows[0].map(h=>normalizeHeader(h));
@@ -474,6 +479,9 @@ function parseCsvSmart(text){
   return { header, rows: objs };
 }
 function splitLine(line, delim){
+  if(delim === "WS"){
+    return line.trim().split(/\s+/).map(x=>String(x??"").trim());
+  }
   const out=[]; let cur=""; let inQ=false;
   for(let i=0;i<line.length;i++){
     const ch=line[i];
@@ -514,10 +522,47 @@ function autodetectMappingFromHeader(parsedHeader){
     atividade: pickOne(["atividade","coluna 4","descricao atividade"]),
     situacao: pickOne(["situacao","situação","status"]),
     ultima: pickOne(["data da ultima preventiva","data da última preventiva","ultima preventiva"]),
-    proxima: pickOne(["data da proxima","data da próxima","proxima preventiva"]),
+    proxima: pickOne(["data da proxima","data da próxima","proxima preventiva","data_final","data final","data fim"]),
     periodicidade: pickOne(["periodicidade","periodicidade (dias)"]),
     laudo: pickOne(["coluna 10","laudo","link"]),
   };
+}
+
+// ===== Preview Datas (TASY + DATA_FINAL) =====
+function buildPreviewDatas(parsed, mapping){
+  const changes = [];
+  const invalid = [];
+
+  for(const row of parsed.rows){
+    const tasy = norm(pick(row, mapping.tasy));
+    const proxima = normalizeDateBR(pick(row, mapping.proxima));
+    if(!tasy){ invalid.push({ reason:"Sem TASY", row }); continue; }
+    if(!proxima){ invalid.push({ reason:`Sem DATA_FINAL (TASY ${tasy})`, row }); continue; }
+
+    const plans = db.manutencoes.filter(m=>norm(m.tasy)===tasy);
+    if(plans.length===0){ invalid.push({ reason:`Sem planejamento (TASY ${tasy})`, row }); continue; }
+
+    for(const cur of plans){
+      if(proxima && proxima !== norm(cur.proxima)){
+        const after = { ...cur, proxima };
+        changes.push({
+          type:"M_UPDATE",
+          key:cur.planKey || cur.id,
+          before:cur,
+          after,
+          fields:{ proxima:{ before:cur.proxima, after:proxima } }
+        });
+      }
+    }
+  }
+
+  const summary = {
+    create: 0,
+    update: changes.length,
+    invalid: invalid.length
+  };
+
+  return { mode:"datas", summary, changes, invalid };
 }
 
 // ===== Preview Equipamentos =====
@@ -709,6 +754,8 @@ function renderPreview(preview){
     hint.innerText = `Prévia EQUIP — Criar: ${preview.summary.create}, Atualizar: ${preview.summary.update}, Descontinuar: ${preview.summary.discontinue}, Inválidos: ${preview.summary.invalid}.`;
   }else if(preview.mode === "setores"){
     hint.innerText = `Prévia SETORES — Criar: ${preview.summary.create}, Inválidos: ${preview.summary.invalid}.`;
+  }else if(preview.mode === "datas"){
+    hint.innerText = `Prévia DATAS — Atualizar: ${preview.summary.update}, Inválidos: ${preview.summary.invalid}.`;
   }else{
     hint.innerText = `Prévia PLANO — Criar: ${preview.summary.create}, Atualizar: ${preview.summary.update}, Inválidos: ${preview.summary.invalid}.`;
   }
@@ -725,7 +772,7 @@ function renderPreview(preview){
     if(ch.type==="M_CREATE") rows.push({ tipo:"CRIAR PLANO", chave:ch.key, detalhes:`${ch.after.atividade} • Última:${ch.after.ultima} • Próxima:${ch.after.proxima} • Per:${ch.after.periodicidadeDias}` });
     if(ch.type==="M_UPDATE"){
       const fields = Object.entries(ch.fields).map(([k,v])=>`${k}: "${norm(v.before)}"→"${norm(v.after)}"`).join(" • ");
-      rows.push({ tipo:"ATUALIZAR PLANO", chave:ch.key, detalhes:fields });
+      rows.push({ tipo: preview.mode==="datas" ? "ATUALIZAR DATA" : "ATUALIZAR PLANO", chave:ch.key, detalhes:fields });
     }
     if(ch.type==="S_CREATE") rows.push({ tipo:"CRIAR SETOR", chave:"—", detalhes:ch.after.nome });
   }
@@ -850,6 +897,28 @@ function applyPreview(preview){
     }
     saveDB();
     log("IMPORT_SETOR_APPLY", `Criados=${cC}`);
+    return;
+  }
+
+  if(preview.mode === "datas"){
+    let cU = 0;
+    for(const ch of preview.changes){
+      if(ch.type !== "M_UPDATE") continue;
+      const cur = db.manutencoes.find(m=>m.planKey===ch.key || m.id===ch.key);
+      if(!cur) continue;
+      cur.proxima = ch.after.proxima;
+      cur.updatedAt = nowISO();
+      addTimelineEvent({
+        equipKey: cur.equipKey,
+        tasy: cur.tasy,
+        type: "manut",
+        title: "Data próxima atualizada (importação)",
+        details: `#${cur.seq || "—"} • ${cur.atividade || "—"}`
+      });
+      cU++;
+    }
+    saveDB();
+    log("IMPORT_DATAS_APPLY", `Atualizados=${cU}`);
     return;
   }
 

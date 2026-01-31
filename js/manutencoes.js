@@ -190,6 +190,8 @@ function renderManutList(){
   const q = norm(elSearchManut.value).toLowerCase();
   const f = norm(elFilterManut.value);
   const el = document.getElementById("manutList");
+  const today = new Date();
+  today.setHours(0,0,0,0);
 
   let rows = db.manutencoes.slice().map(m=>{
     const eq = db.equipamentos.find(e=>keyOfEquip(e)===m.equipKey) || findEquipByTasy(m.tasy);
@@ -200,8 +202,26 @@ function renderManutList(){
   });
 
   rows = rows.filter(m=>{
-    if(f === "inativos" && m._planAtivo) return false;
-    if((!f || f === "ativos") && !m._planAtivo) return false;
+    if(f === "inativas") return !m._planAtivo;
+    if(f === "atrasadas"){
+      if(!m._planAtivo) return false;
+      const d = parseBRToDate(m.proxima);
+      if(!d) return false;
+      return d.getTime() < today.getTime();
+    }
+    if(f === "em_dia"){
+      if(!m._planAtivo) return false;
+      const d = parseBRToDate(m.proxima);
+      if(!d) return false;
+      return d.getTime() >= today.getTime();
+    }
+    if(f === "todos") return true;
+    if(!f) return true;
+    if(f === "ativos") return m._planAtivo;
+    const hay = `${m._eqNome} ${m.tasy} ${m._setor} ${m._tipo} ${m.atividade}`.toLowerCase();
+    return !q || hay.includes(q);
+  });
+  rows = rows.filter(m=>{
     const hay = `${m._eqNome} ${m.tasy} ${m._setor} ${m._tipo} ${m.atividade}`.toLowerCase();
     return !q || hay.includes(q);
   });

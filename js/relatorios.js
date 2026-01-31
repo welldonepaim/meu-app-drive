@@ -46,20 +46,6 @@ function setRelatoriosRootInfo(text){
   if(el) el.innerText = text;
 }
 
-function setRelatoriosDriveInfo(text){
-  const el = document.getElementById("relDriveInfo");
-  if(el) el.innerText = text;
-}
-
-function driveEnabled(){
-  return !!document.getElementById("relUseDrive")?.checked;
-}
-
-function readDriveSettingsSafe(){
-  if(!window.gmDrive || !window.gmDrive.readDriveInputs) return { clientId: "", folderId: "" };
-  return window.gmDrive.readDriveInputs();
-}
-
 async function initRelatoriosRoot(){
   try{
     const handle = await loadRelatoriosRoot();
@@ -337,19 +323,19 @@ function buildPdfBytes(table){
   const margin = 40;
   const headerHeight = 110;
   const footerHeight = 30;
-  const rowHeight = 22;
   const headerRowHeight = 30;
   const fontSize = 10;
   const fontSizeHeader = 11;
   const charWidth = fontSize * 0.55;
   const cellPadX = 4;
   const cellPadY = 5;
-  const firstRowOffset = 6;
+  const baseRowHeight = 22;
+  const lineHeight = fontSize + 2;
   const tableTop = pageHeight - margin - headerHeight;
   const tableBottom = margin + footerHeight;
   const tableHeight = tableTop - tableBottom;
-  const rowsPerPage = Math.floor((tableHeight - headerRowHeight - rowHeight) / rowHeight);
   const blankRowCount = 1;
+  const blankRowHeight = baseRowHeight * blankRowCount;
 
   const columns = [
     { key: "patrimonio", title: "Patrimônio", width: 60 },
@@ -361,9 +347,57 @@ function buildPdfBytes(table){
   ];
 
   const rows = Array.isArray(table.rows) ? table.rows : [];
+  const availableHeight = tableHeight - headerRowHeight - blankRowHeight;
+  const maxLinesPerChunk = Math.max(1, Math.floor((availableHeight - (cellPadY * 2)) / lineHeight));
+  const rowChunks = [];
+  for(const row of rows){
+    const colLines = {};
+    let maxLines = 1;
+    for(const col of columns){
+      let text = row[col.key] ?? "";
+      if(col.key === "laudo" && row.laudoLink){
+        text = "link";
+      }
+      const maxChars = Math.max(1, Math.floor((col.width - cellPadX * 2) / charWidth));
+      const lines = wrapLines([text], maxChars);
+      colLines[col.key] = lines;
+      if(lines.length > maxLines) maxLines = lines.length;
+    }
+    const chunkCount = Math.max(1, Math.ceil(maxLines / maxLinesPerChunk));
+    for(let c=0;c<chunkCount;c++){
+      const chunkLines = {};
+      let chunkMax = 1;
+      for(const col of columns){
+        const lines = colLines[col.key] || [""];
+        const start = c * maxLinesPerChunk;
+        const slice = lines.slice(start, start + maxLinesPerChunk);
+        chunkLines[col.key] = slice;
+        if(slice.length > chunkMax) chunkMax = slice.length;
+      }
+      rowChunks.push({
+        row,
+        lines: chunkLines,
+        lineCount: chunkMax,
+        isContinuation: c > 0
+      });
+    }
+  }
+
   const pages = [];
-  for(let i=0;i<rows.length;i+=rowsPerPage){
-    pages.push(rows.slice(i, i + rowsPerPage));
+  let current = [];
+  let used = 0;
+  for(const chunk of rowChunks){
+    chunk.height = (cellPadY * 2) + (chunk.lineCount * lineHeight);
+    if(current.length && (used + chunk.height > availableHeight)){
+      pages.push(current);
+      current = [];
+      used = 0;
+    }
+    current.push(chunk);
+    used += chunk.height;
+  }
+  if(current.length || pages.length === 0){
+    pages.push(current);
   }
 
   const objects = [];
@@ -425,16 +459,21 @@ function buildPdfBytes(table){
     contentParts.push("0 G");
     contentParts.push("0.5 w");
     const totalWidth = columns.reduce((a,c)=>a+c.width,0);
-    const totalRowsHeight = headerRowHeight + ((pageRows.length + blankRowCount) * rowHeight);
+    const rowsHeight = pageRows.reduce((acc,r)=>acc + (r.height || baseRowHeight), 0);
+    const totalRowsHeight = headerRowHeight + blankRowHeight + rowsHeight;
     contentParts.push(`${tableX} ${tableTop - totalRowsHeight} ${totalWidth} ${totalRowsHeight} re S`);
     let xCursor = tableX;
     for(const col of columns){
       xCursor += col.width;
       contentParts.push(`${xCursor} ${tableTop - totalRowsHeight} m ${xCursor} ${tableTop} l S`);
     }
-    for(let i=0;i<=pageRows.length + blankRowCount;i++){
-      const y = tableTop - headerRowHeight - (i * rowHeight);
-      contentParts.push(`${tableX} ${y} m ${tableX + totalWidth} ${y} l S`);
+    let yLine = tableTop - headerRowHeight;
+    contentParts.push(`${tableX} ${yLine} m ${tableX + totalWidth} ${yLine} l S`);
+    yLine -= blankRowHeight;
+    contentParts.push(`${tableX} ${yLine} m ${tableX + totalWidth} ${yLine} l S`);
+    for(const r of pageRows){
+      yLine -= (r.height || baseRowHeight);
+      contentParts.push(`${tableX} ${yLine} m ${tableX + totalWidth} ${yLine} l S`);
     }
     contentParts.push("Q");
 
@@ -450,42 +489,36 @@ function buildPdfBytes(table){
       hx += col.width;
     }
 
-    const fitText = (text, maxWidth)=>{
-      const s = String(text ?? "");
-      const maxChars = Math.max(1, Math.floor((maxWidth - cellPadX * 2) / charWidth));
-      if(s.length <= maxChars) return s;
-      if(maxChars <= 3) return s.slice(0, maxChars);
-      return `${s.slice(0, Math.max(0, maxChars - 3))}...`;
-    };
-
-    for(let r=0;r<pageRows.length;r++){
-      const row = pageRows[r];
+    let yCursor = tableTop - headerRowHeight - blankRowHeight;
+    for(const chunk of pageRows){
+      const row = chunk.row;
+      const rowTop = yCursor;
       let cx = tableX + cellPadX;
-      const cy = tableTop - headerRowHeight - ((r + blankRowCount) * rowHeight) + cellPadY + firstRowOffset;
       for(const col of columns){
-        const rawVal = row[col.key] ?? "";
-        let text = fitText(rawVal, col.width);
-        if(col.key === "laudo" && row.laudoLink){
-          text = "link";
+        const lines = chunk.lines?.[col.key] || [""];
+        for(let li=0;li<lines.length;li++){
+          const text = lines[li] ?? "";
+          if(text === "" && lines.length > 1) continue;
+          const cy = rowTop - cellPadY - fontSize - (li * lineHeight);
+          contentParts.push("BT");
+          contentParts.push(`/F1 ${fontSize} Tf`);
+          if(col.key === "proxima" && row.vencida){
+            contentParts.push("1 0 0 rg");
+          }else if(col.key === "laudo" && row.laudoLink){
+            contentParts.push("0 0 1 rg");
+          }else{
+            contentParts.push("0 0 0 rg");
+          }
+          contentParts.push(`${cx} ${cy} Td`);
+          contentParts.push(`(${pdfEscapeText(text)}) Tj`);
+          contentParts.push("ET");
         }
-        contentParts.push("BT");
-        contentParts.push(`/F1 ${fontSize} Tf`);
-        if(col.key === "proxima" && row.vencida){
-          contentParts.push("1 0 0 rg");
-        }else if(col.key === "laudo" && row.laudoLink){
-          contentParts.push("0 0 1 rg");
-        }else{
-          contentParts.push("0 0 0 rg");
-        }
-        contentParts.push(`${cx} ${cy} Td`);
-        contentParts.push(`(${pdfEscapeText(text)}) Tj`);
-        contentParts.push("ET");
 
-        if(col.key === "laudo" && row.laudoLink){
+        if(col.key === "laudo" && row.laudoLink && !chunk.isContinuation){
           const linkStart = cx;
           const linkEnd = cx + (4 * charWidth);
-          const y1 = cy - 2;
-          const y2 = cy + fontSize + 2;
+          const y1 = rowTop - cellPadY - fontSize - 2;
+          const y2 = y1 + fontSize + 4;
           const url = pdfEscapeText(row.laudoLink);
           const annotId = nextId++;
           annots.push(annotId);
@@ -494,6 +527,7 @@ function buildPdfBytes(table){
 
         cx += col.width;
       }
+      yCursor -= (chunk.height || baseRowHeight);
     }
 
     const footerText = "* Próxima vencida (laudo existente).";
@@ -584,40 +618,6 @@ async function gerarRelatoriosPdf(){
       : `MULTI-${filters.tipos.length}`)
     : "TODOS";
 
-  if(driveEnabled()){
-    const settings = readDriveSettingsSafe();
-    if(!settings.clientId) return alert("Informe o Client ID do Google Cloud.");
-    if(!settings.folderId) return alert("Informe o ID da pasta no Drive.");
-    if(!window.gmDrive || !window.gmDrive.ensureDriveToken || !window.gmDrive.uploadFileToDrive){
-      return alert("Integração com Drive não carregada.");
-    }
-    showProgress("Enviando ao Google Drive...", "Gerando PDFs e enviando para a pasta.");
-    try{
-      const token = await window.gmDrive.ensureDriveToken(true);
-      if(!token) throw new Error("Token do Drive indisponível.");
-      for(const [setorNome, list] of bySetor){
-        const table = buildRelatorioTable(setorNome, list, filters);
-        const bytes = buildPdfBytes(table);
-        const fileName = `relatorio_${sanitizeFsName(setorNome)}_${tipoTag}_${dateKey}.pdf`;
-        await window.gmDrive.uploadFileToDrive({
-          folderId: settings.folderId,
-          name: fileName,
-          mimeType: "application/pdf",
-          bytes,
-          token
-        });
-      }
-      setRelatoriosDriveInfo("Envio concluído para o Google Drive.");
-      alert("Relatórios enviados ao Google Drive.");
-    }catch(err){
-      console.error(err);
-      alert("Falha ao enviar para o Google Drive.");
-    }finally{
-      setTimeout(hideProgress, 0);
-    }
-    return;
-  }
-
   const root = await ensureRelatoriosRoot();
   if(!root && !window.showDirectoryPicker){
     for(const [setorNome, list] of bySetor){
@@ -653,28 +653,6 @@ async function gerarRelatoriosPdf(){
 
 document.getElementById("btnSelectRelatoriosRoot")?.addEventListener("click", selectRelatoriosRoot);
 document.getElementById("btnGerarRelatorio")?.addEventListener("click", gerarRelatoriosPdf);
-document.getElementById("relUseDrive")?.addEventListener("change", ()=>{
-  if(driveEnabled()){
-    const settings = readDriveSettingsSafe();
-    if(settings.folderId){
-      setRelatoriosDriveInfo(`Drive ativo. Pasta: ${settings.folderId}.`);
-    }else{
-      setRelatoriosDriveInfo("Drive ativo. Informe o ID da pasta na aba OS.");
-    }
-  }else{
-    setRelatoriosDriveInfo("Drive desativado. Use exportação local.");
-  }
-});
 
 initRelatoriosRoot();
 window.renderRelatoriosFilters = renderRelatoriosFilters;
-if(driveEnabled()){
-  const settings = readDriveSettingsSafe();
-  if(settings.folderId){
-    setRelatoriosDriveInfo(`Drive ativo. Pasta: ${settings.folderId}.`);
-  }else{
-    setRelatoriosDriveInfo("Drive ativo. Informe o ID da pasta na aba OS.");
-  }
-}else{
-  setRelatoriosDriveInfo("Drive desativado. Use exportação local.");
-}

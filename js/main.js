@@ -6,6 +6,7 @@
 function renderAll(){
   renderKPIs();
   refreshTipoSelect();
+  refreshTipoFilter();
   refreshSetorSelect();
   renderRelatoriosFilters();
   renderTipos();

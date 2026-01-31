@@ -127,10 +127,12 @@ async function listFolderChildren(folderId, token, pageToken){
 
 async function listAllFilesRecursive(rootFolderId, token, onProgress){
   const files = [];
-  const queue = [rootFolderId];
+  const queue = [{ id: rootFolderId, path: "" }];
   const stats = { foldersScanned: 0, pages: 0, totalListed: 0 };
   while(queue.length){
-    const folderId = queue.shift();
+    const current = queue.shift();
+    const folderId = current.id;
+    const folderPath = current.path;
     stats.foldersScanned++;
     let pageToken = "";
     do{
@@ -148,9 +150,11 @@ async function listAllFilesRecursive(rootFolderId, token, onProgress){
       stats.totalListed += list.length;
       for(const f of list){
         if(f.mimeType === "application/vnd.google-apps.folder"){
-          queue.push(f.id);
+          const nextPath = folderPath ? `${folderPath}/${f.name}` : (f.name || "");
+          queue.push({ id: f.id, path: nextPath });
         }else{
-          files.push(f);
+          const filePath = folderPath || "(raiz)";
+          files.push({ ...f, _folderPath: filePath });
         }
       }
       pageToken = data.nextPageToken || "";
