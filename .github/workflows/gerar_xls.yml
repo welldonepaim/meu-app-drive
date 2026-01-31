@@ -3,14 +3,16 @@ name: Gerar XLS dos laudos (Drive)
 on:
   workflow_dispatch:
   schedule:
-    - cron: "0 3 * * *"  # todo dia 03:00 UTC (00:00 em -03), ajuste se quiser
+    - cron: "0 3 * * *" # 03:00 UTC (00:00 em -03)
 
 jobs:
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 20
+
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout
+        uses: actions/checkout@v4
 
       - name: Setup Python
         uses: actions/setup-python@v5
@@ -27,14 +29,23 @@ jobs:
           GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
           PYTHONUNBUFFERED: "1"
+          # Limites (pra não varrer infinito)
+          MAX_PDFS: "300"
+          # Se quiser filtrar por "tasy" (recomendado), deixe "tasy"
+          NAME_CONTAINS: "tasy"
+          # Se quiser baixar PDFs pra uma pasta local no runner:
+          DOWNLOAD_DIR: "downloads"
         run: |
           echo "ROOT_FOLDER_ID=${GDRIVE_ROOT_FOLDER_ID}"
-          python -u extract_drive_laudate.py
+          python -u extract_drive_laudate.py | tee run.log
 
-
-      - name: Upload artifact
-        if:always()
+      - name: Upload resultado e logs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: resultado-xlsx
-          path: resultado.xlsx
+          name: resultado-e-logs
+          path: |
+            resultado.xlsx
+            run.log
+            downloads/
+          if-no-files-found: warn
