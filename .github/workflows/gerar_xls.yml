@@ -8,6 +8,7 @@ on:
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
 
@@ -25,11 +26,15 @@ jobs:
         env:
           GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
           GDRIVE_ROOT_FOLDER_ID: ${{ secrets.GDRIVE_ROOT_FOLDER_ID }}
+          PYTHONUNBUFFERED: "1"
         run: |
-          python extract_drive_laudate.py
+          echo "ROOT_FOLDER_ID=${GDRIVE_ROOT_FOLDER_ID}"
+          python -u extract_drive_laudate.py
+
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v6
+        if:always()
+        uses: actions/upload-artifact@v4
         with:
           name: resultado-xlsx
           path: resultado.xlsx
