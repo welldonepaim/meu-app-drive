@@ -28,7 +28,18 @@ RE_TASY = re.compile(r"\btasy[\s\-_]*0*(\d{2,10})\b", re.IGNORECASE)
 FOLDER_MIME = "application/vnd.google-apps.folder"
 PDF_MIME = "application/pdf"
 
+##adicionado novos regex para ser mais seletivo no selecionamento de datas .
 
+RE_HEADER_DATE = re.compile(
+ r"(?im)^\s*(data)\s*[:\-]\s*(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b"
+)
+RE_FILENAME_DATE=re.compile(
+    r"\b(\d{1,2}[\/\-\.]\d{1,2}[\/\-\.]\d{2,4})\b"
+
+)
+RE_AVOID_LINE = re.compile(
+    r"(?i)\b(v[aá]lido\s+at[eé]|validade|vencimento)\b"
+)
 # -------------------------
 # ENV HELPERS
 # -------------------------
@@ -78,22 +89,54 @@ def parse_all_dates(text: str):
             pass
     return dates
 
-def pick_date(text: str):
+def pick_date(text: str, filename: str = ""):
+    """
+    Prioridade:
+    1) Data no topo: "Data: dd/mm/aaaa" (primeiras linhas)
+    2) Data no nome do arquivo (ex: 19-11-2025.pdf)
+    3) Data em linha com keyword (ignorando validade/vencimento)
+    4) Maior data do texto todo (fallback)
+    """
     if not text or not text.strip():
         return None, "SEM_TEXTO"
 
+    # 1) Topo do documento (onde fica "Data:")
+    top = "\n".join(text.splitlines()[:40])
+    m = RE_HEADER_DATE.search(top)
+    if m:
+        try:
+            d = dtparser.parse(m.group(2), dayfirst=True).date()
+            return d, "OK_TOPO_DATA"
+        except Exception:
+            pass
+
+    # 2) Data no nome do arquivo (muito comum e bem confiável)
+    if filename:
+        m2 = RE_FILENAME_DATE.search(filename)
+        if m2:
+            try:
+                d = dtparser.parse(m2.group(1), dayfirst=True).date()
+                return d, "OK_NOME_ARQUIVO"
+            except Exception:
+                pass
+
+    # 3) Linhas com keyword, mas ignorando validade/vencimento
     key_candidates = []
     for line in text.splitlines():
         if RE_KEY.search(line):
+            if RE_AVOID_LINE.search(line):
+                continue
             key_candidates.extend(parse_all_dates(line))
     if key_candidates:
-        return max(key_candidates), "OK_KEYWORD"
+        return max(key_candidates), "OK_KEYWORD_FILTRADO"
 
+    # 4) fallback: maior data no texto todo
     all_dates = parse_all_dates(text)
     if all_dates:
         return max(all_dates), "OK_MAX"
 
     return None, "SEM_DATA"
+
 
 def drive_service(sa_json_str: str):
     info = json.loads(sa_json_str)
@@ -341,7 +384,7 @@ def main():
                     not_found.append((tasy, year_name, path_hint, f"ERRO_PDF: {type(e).__name__}"))
                     continue
 
-                d, motivo = pick_date(text)
+                d, motivo = pick_date(text,filename=name)
                 if d is None:
                     not_found.append((tasy, year_name, path_hint, motivo))
                     continue
