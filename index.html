@@ -118,6 +118,10 @@
       <label class="btn soft" style="cursor:pointer">
         Importar backup <input id="fileImportBackup" type="file" accept=".json" hidden>
       </label>
+      <button class="btn soft" id="btnDriveConnect">Conectar Drive</button>
+      <button class="btn soft" id="btnDriveSave">Exportar para Drive</button>
+      <button class="btn soft" id="btnDriveLoad">Importar do Drive</button>
+      <span class="muted small" id="driveStatus">Drive: desconectado</span>
       <button class="btn danger" id="btnReset">Reset (cuidado)</button>
     </div>
   </div>
@@ -153,6 +157,9 @@
         <input id="searchEq" placeholder="Buscar: nome, tasy, patrimônio, setor..." style="min-width:280px">
         <select id="filterEqTipo" style="width:220px">
           <option value="">Tipo (todos)</option>
+        </select>
+        <select id="filterEqSetor" style="width:220px">
+          <option value="">Setor (todos)</option>
         </select>
         <select id="filterEq" style="width:220px">
           <option value="">Filtro (todos)</option>
@@ -387,7 +394,7 @@
           <div><label>Patrimônio</label><input id="mapPatrimonio" value="patrimonio"></div>
           <div><label>Nome/Descrição</label><input id="mapNome" value="descricao"></div>
           <div><label>Setor</label><input id="mapSetor" value="setor"></div>
-          <div><label>Modelo/Coluna 4</label><input id="mapModelo" value="coluna 4"></div>
+          <div><label>Modelo</label><input id="mapModelo" value="coluna 4"></div>
           <div><label>Tipo</label><input id="mapTipo" value="tipo"></div>
 
           <div><label>Atividade</label><input id="mapAtividade" value="atividade"></div>
@@ -581,6 +588,7 @@
 
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 <script src="./app.js"></script>
 <script src="./js/driveLaudos.js"></script>
 <script src="./js/tipos.js"></script>

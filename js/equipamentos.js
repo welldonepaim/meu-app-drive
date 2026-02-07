@@ -262,9 +262,11 @@ btnDelEq.addEventListener("click", ()=>{
 const elSearchEq = document.getElementById("searchEq");
 const elFilterEq = document.getElementById("filterEq");
 const elFilterEqTipo = document.getElementById("filterEqTipo");
+const elFilterEqSetor = document.getElementById("filterEqSetor");
 elSearchEq.addEventListener("input", renderEquipList);
 elFilterEq.addEventListener("change", renderEquipList);
 elFilterEqTipo.addEventListener("change", renderEquipList);
+elFilterEqSetor.addEventListener("change", renderEquipList);
 
 function refreshTipoFilter(){
   if(!elFilterEqTipo) return;
@@ -282,10 +284,27 @@ function refreshTipoFilter(){
   }
 }
 
+function refreshSetorFilter(){
+  if(!elFilterEqSetor) return;
+  const current = norm(elFilterEqSetor.value);
+  elFilterEqSetor.innerHTML = `<option value="">Setor (todos)</option><option value="__SEM__">Sem setor</option>`;
+  const sorted = db.setores.slice().sort((a,b)=>norm(a.nome).localeCompare(norm(b.nome)));
+  for(const s of sorted){
+    const opt = document.createElement("option");
+    opt.value = String(s.id);
+    opt.textContent = s.nome;
+    elFilterEqSetor.appendChild(opt);
+  }
+  if(current && Array.from(elFilterEqSetor.options).some(o=>o.value===current)){
+    elFilterEqSetor.value = current;
+  }
+}
+
 function renderEquipList(){
   const q = norm(elSearchEq.value).toLowerCase();
   const f = norm(elFilterEq.value);
   const fTipo = norm(elFilterEqTipo?.value || "");
+  const fSetor = norm(elFilterEqSetor?.value || "");
   const el = document.getElementById("eqList");
 
   if(!showEquipList){
@@ -302,6 +321,10 @@ function renderEquipList(){
     if(fTipo){
       if(fTipo==="__SEM__" && e.tipoId) return false;
       if(fTipo!=="__SEM__" && String(e.tipoId || "") !== fTipo) return false;
+    }
+    if(fSetor){
+      if(fSetor==="__SEM__" && e.setorId) return false;
+      if(fSetor!=="__SEM__" && String(e.setorId || "") !== fSetor) return false;
     }
 
     const setor = sectorNameFromEquip(e);

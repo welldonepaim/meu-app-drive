@@ -35,7 +35,9 @@ function loadDB(){
     return { tipos: [], setores: [], equipamentos: [], manutencoes: [], os: [], laudos: [], eventos: [], logs: [] };
   }
 }
-function saveDB(){ localStorage.setItem(DB_KEY, JSON.stringify(db)); }
+function saveDB(){
+  localStorage.setItem(DB_KEY, JSON.stringify(db));
+}
 let db = loadDB();
 
 function log(action, details){
@@ -523,7 +525,7 @@ function autodetectMappingFromHeader(parsedHeader){
     situacao: pickOne(["situacao","situação","status"]),
     ultima: pickOne(["data da ultima preventiva","data da última preventiva","ultima preventiva"]),
     proxima: pickOne(["data da proxima","data da próxima","proxima preventiva","data_final","data final","data fim"]),
-    periodicidade: pickOne(["periodicidade","periodicidade (dias)"]),
+    periodicidade: pickOne(["periodicidade","periodicidade (dias)","planejamento","plano","planejam"]),
     laudo: pickOne(["coluna 10","laudo","link"]),
   };
 }
@@ -658,7 +660,8 @@ function buildPreviewManut(parsed, mapping, allowed){
     const tasy = norm(pick(row, mapping.tasy));
     if(!tasy){ invalid.push({ reason:"Sem TASY", row }); continue; }
 
-    const atividade = allowed.atividade ? norm(pick(row, mapping.atividade)) : norm(pick(row, mapping.atividade));
+    let atividade = norm(pick(row, mapping.atividade));
+    if(!atividade) atividade = "manutenção preventiva";
     const ultima = normalizeDateBR(pick(row, mapping.ultima));
     const periodicidade = toIntSafe(pick(row, mapping.periodicidade));
     const proximaCsv = normalizeDateBR(pick(row, mapping.proxima));
@@ -666,7 +669,6 @@ function buildPreviewManut(parsed, mapping, allowed){
     const eq = findEquipByTasy(tasy);
     const equipKey = eq ? keyOfEquip(eq) : `tasy:${tasy}`;
 
-    if(!atividade){ invalid.push({ reason:`Sem atividade (TASY ${tasy})`, row }); continue; }
     if(!ultima || !periodicidade){ invalid.push({ reason:`Sem última/periodicidade (TASY ${tasy})`, row }); continue; }
 
     const proximaCalc = addDaysBR(ultima, periodicidade);
@@ -708,7 +710,7 @@ function buildPreviewManut(parsed, mapping, allowed){
     }
 
     if(Object.keys(fields).length>0){
-      changes.push({ type:"M_UPDATE", key:id, before:cur, after, fields });
+      changes.push({ type:"M_UPDATE", key:planKey, before:cur, after, fields });
     }
   }
 
@@ -837,26 +839,30 @@ function applyPreview(preview){
         // preserva recebePreventiva SEMPRE por import
         const keepRecebe = (cur.recebePreventiva===false)?false:true;
         const keepStatus = cur.status || "ativo";
-        const statusFromImport = allowed.status ? parseEquipStatus(ch.after.status) : "";
-        const next = { ...ch.after };
-        delete next.setorId;
-        delete next.setorNome;
+        const statusFromImport = (allowed.status && ch.fields && ch.fields.status)
+          ? parseEquipStatus(ch.after.status)
+          : "";
 
-        // aplica campos
-        Object.assign(cur, next);
-
-        // tipo via nome
-        if(ch.after.tipoNome){
-          cur.tipoId = ensureTipo(ch.after.tipoNome);
+        // aplica somente os campos efetivamente autorizados na prévia
+        if(ch.fields && ch.fields.nome){ cur.nome = norm(ch.after.nome); }
+        if(ch.fields && ch.fields.modelo){ cur.modelo = norm(ch.after.modelo); }
+        if(ch.fields && ch.fields.patrimonio){ cur.patrimonio = norm(ch.after.patrimonio); }
+        if(ch.fields && ch.fields.tipoNome){ cur.tipoId = ensureTipo(ch.after.tipoNome); }
+        if(ch.fields && ch.fields.setor){
+          if(ch.after.setorId){
+            cur.setorId = Number(ch.after.setorId);
+          }else if(ch.after.setorNome){
+            cur.setorId = ensureSetor(ch.after.setorNome);
+          }
         }
-        if(ch.after.setorId){
-          cur.setorId = Number(ch.after.setorId);
-        }else if(ch.after.setorNome){
-          cur.setorId = ensureSetor(ch.after.setorNome);
+        if(ch.fields && ch.fields.status){
+          cur.status = statusFromImport || keepStatus;
         }
 
         cur.recebePreventiva = keepRecebe;
-        cur.status = statusFromImport || keepStatus;
+        if(!ch.fields || !ch.fields.status){
+          cur.status = keepStatus;
+        }
         if(cur.status === "descontinuado"){
           for(const m of db.manutencoes){
             if(m.equipKey === ch.key){
@@ -1112,4 +1118,196 @@ document.getElementById("btnReset").addEventListener("click", ()=>{
   localStorage.removeItem(DB_KEY);
   db = loadDB();
   renderAll();
+});
+
+// =====================
+// Google Drive (backup)
+// =====================
+const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive.file";
+const DRIVE_FILE_NAME = "backup_gm.json";
+const DRIVE_CLIENT_ID_KEY = "gm_drive_client_id";
+const DRIVE_FILE_ID_KEY = "gm_drive_file_id";
+
+let driveTokenClient = null;
+let driveAccessToken = "";
+let driveTokenExpiresAt = 0;
+let driveFileId = localStorage.getItem(DRIVE_FILE_ID_KEY) || "";
+
+function setDriveStatus(text){
+  const el = document.getElementById("driveStatus");
+  if(el) el.innerText = text;
+}
+
+function getDriveClientId(){
+  return localStorage.getItem(DRIVE_CLIENT_ID_KEY) || "";
+}
+function setDriveClientId(id){
+  localStorage.setItem(DRIVE_CLIENT_ID_KEY, id);
+}
+
+function ensureDriveClientId(){
+  let id = getDriveClientId();
+  if(id) return id;
+  id = prompt("Cole o Client ID do Google (OAuth Web) para ativar o Drive:");
+  if(!id) return "";
+  setDriveClientId(id);
+  return id;
+}
+
+function initDriveTokenClient(clientId){
+  if(driveTokenClient) return driveTokenClient;
+  if(!window.google || !google.accounts || !google.accounts.oauth2){
+    alert("Google OAuth ainda não carregou. Tente novamente em alguns segundos.");
+    return null;
+  }
+  driveTokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: clientId,
+    scope: DRIVE_SCOPE,
+    callback: ()=>{}
+  });
+  return driveTokenClient;
+}
+
+function requestDriveToken(interactive){
+  return new Promise((resolve, reject)=>{
+    const clientId = ensureDriveClientId();
+    if(!clientId) return reject(new Error("Sem Client ID"));
+    const client = initDriveTokenClient(clientId);
+    if(!client) return reject(new Error("OAuth indisponível"));
+    if(driveAccessToken && Date.now() < driveTokenExpiresAt){
+      return resolve(driveAccessToken);
+    }
+    client.callback = (resp)=>{
+      if(resp && resp.access_token){
+        driveAccessToken = resp.access_token;
+        const ttl = Number(resp.expires_in || 0) * 1000;
+        driveTokenExpiresAt = Date.now() + Math.max(0, ttl - 60000);
+        return resolve(driveAccessToken);
+      }
+      reject(new Error("Falha ao autenticar no Google"));
+    };
+    client.requestAccessToken({ prompt: interactive ? "consent" : "" });
+  });
+}
+
+async function driveFetch(url, options, interactive){
+  const token = await requestDriveToken(interactive);
+  const headers = Object.assign({}, options?.headers || {}, { Authorization: `Bearer ${token}` });
+  const resp = await fetch(url, { ...options, headers });
+  if(!resp.ok) throw new Error(`Drive ${resp.status}`);
+  return resp;
+}
+
+async function ensureDriveFileId(interactive){
+  if(driveFileId){
+    try{
+      await driveFetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?fields=id`, { method:"GET" }, interactive);
+      return driveFileId;
+    }catch{
+      driveFileId = "";
+      localStorage.removeItem(DRIVE_FILE_ID_KEY);
+    }
+  }
+  const q = encodeURIComponent(`name='${DRIVE_FILE_NAME}' and trashed=false`);
+  const listUrl = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime)&orderBy=modifiedTime desc`;
+  const listResp = await driveFetch(listUrl, { method:"GET" }, interactive);
+  const data = await listResp.json();
+  const file = Array.isArray(data.files) && data.files.length ? data.files[0] : null;
+  if(file && file.id){
+    driveFileId = file.id;
+    localStorage.setItem(DRIVE_FILE_ID_KEY, driveFileId);
+    return driveFileId;
+  }
+  return "";
+}
+
+async function uploadDriveBackup(interactive){
+  const fileId = await ensureDriveFileId(interactive);
+  const boundary = "-----gm_drive_boundary_" + Math.random().toString(16).slice(2);
+  const metadata = { name: DRIVE_FILE_NAME, mimeType: "application/json" };
+  const body =
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify(metadata)}\r\n` +
+    `--${boundary}\r\n` +
+    `Content-Type: application/json; charset=UTF-8\r\n\r\n` +
+    `${JSON.stringify(db)}\r\n` +
+    `--${boundary}--`;
+
+  const url = fileId
+    ? `https://www.googleapis.com/upload/drive/v3/files/${fileId}?uploadType=multipart`
+    : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart`;
+  const method = fileId ? "PATCH" : "POST";
+
+  const resp = await driveFetch(url, {
+    method,
+    headers: { "Content-Type": `multipart/related; boundary=${boundary}` },
+    body
+  }, interactive);
+  const data = await resp.json();
+  if(data && data.id){
+    driveFileId = data.id;
+    localStorage.setItem(DRIVE_FILE_ID_KEY, driveFileId);
+  }
+  setDriveStatus("Drive: conectado");
+}
+
+async function downloadDriveBackup(interactive){
+  const fileId = await ensureDriveFileId(interactive);
+  if(!fileId) throw new Error("Arquivo não encontrado no Drive");
+  const resp = await driveFetch(`https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`, { method:"GET" }, interactive);
+  const text = await resp.text();
+  const parsed = JSON.parse(text);
+  if(!parsed || typeof parsed !== "object") throw new Error("JSON inválido");
+  db = {
+    tipos: Array.isArray(parsed.tipos)?parsed.tipos:[],
+    setores: Array.isArray(parsed.setores)?parsed.setores:[],
+    equipamentos: Array.isArray(parsed.equipamentos)?parsed.equipamentos:[],
+    manutencoes: Array.isArray(parsed.manutencoes)?parsed.manutencoes:[],
+    os: Array.isArray(parsed.os)?parsed.os:[],
+    laudos: Array.isArray(parsed.laudos)?parsed.laudos:[],
+    eventos: Array.isArray(parsed.eventos)?parsed.eventos:[],
+    logs: Array.isArray(parsed.logs)?parsed.logs:[]
+  };
+  saveDB();
+  renderAll();
+  setDriveStatus("Drive: conectado");
+}
+
+document.getElementById("btnDriveConnect")?.addEventListener("click", async ()=>{
+  try{
+    await requestDriveToken(true);
+    setDriveStatus("Drive: conectado");
+    alert("Conectado ao Google Drive.");
+  }catch(err){
+    console.error(err);
+    alert("Falha ao conectar no Google Drive.");
+  }
+});
+
+document.getElementById("btnDriveSave")?.addEventListener("click", async ()=>{
+  showProgress("Salvando no Drive...", "Enviando backup.");
+  try{
+    await uploadDriveBackup(true);
+    alert("Backup salvo no Google Drive.");
+  }catch(err){
+    console.error(err);
+    alert("Falha ao salvar no Drive.");
+  }finally{
+    setTimeout(hideProgress, 0);
+  }
+});
+
+document.getElementById("btnDriveLoad")?.addEventListener("click", async ()=>{
+  if(!confirm("Restaurar do Drive vai substituir os dados locais. Continuar?")) return;
+  showProgress("Restaurando do Drive...", "Baixando backup.");
+  try{
+    await downloadDriveBackup(true);
+    alert("Backup restaurado do Google Drive.");
+  }catch(err){
+    console.error(err);
+    alert("Falha ao restaurar do Drive.");
+  }finally{
+    setTimeout(hideProgress, 0);
+  }
 });

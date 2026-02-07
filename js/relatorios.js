@@ -298,7 +298,10 @@ function wrapLines(lines, maxChars){
 }
 
 function pdfEscapeText(s){
-  const input = String(s ?? "");
+  const input = String(s ?? "")
+    .replace(/[\u2010-\u2015\u2212\uFE58\uFE63\uFF0D]/g, "-")
+    .replace(/[\u2018\u2019\u201B\u2032]/g, "'")
+    .replace(/[\u201C\u201D\u201F\u2033]/g, '"');
   let out = "";
   for(let i=0;i<input.length;i++){
     let code = input.charCodeAt(i);
